@@ -7,6 +7,7 @@ explain it. The LLM never computes a score; code does.
 
 **Live demo:** https://hub-weather-risk-agent.onrender.com (chat; API docs at `/docs`).
 Design, architecture and assumptions: [DESIGN.md](DESIGN.md).
+The AI session that planned and built it: [docs/ai-session/](docs/ai-session/README.txt).
 
 The live service uses a rolling data window (`DATA_END=latest`), so its scores include the newest weather and
 differ slightly from the fixed 2021–2025 numbers in DESIGN.md and the eval, which uses the fixed window so its

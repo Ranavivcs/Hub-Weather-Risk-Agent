@@ -107,6 +107,7 @@ frontend/src/       React UI: App.tsx (chat), Sidebar.tsx (ranking / "How we ran
                     ScoreCell.tsx, hazards.ts, brand.ts, ErrorBoundary.tsx, api.ts
 tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM, alerts, API, window/ingest
 evals/              cases.json + run.py (real LLM, ground truth from code)
+docs/ai-session/    the AI session transcripts (readable versions)
 ```
 
 ## Data storage: SQLite
