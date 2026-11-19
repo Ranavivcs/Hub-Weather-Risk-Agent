@@ -44,7 +44,10 @@
       "tools_any": ["hub_breakdown"],
       "hubs_include": ["dallas"],
       "mentions_all_groups": [["heat"], ["hail", "tornado", "severe storm", "severe-storm", "severe_storm"]],
-      "numbers_in_answer": [{"hub_score": {"hub": "dallas", "hazard": "composite"}, "tolerance": 0.5}]
+      "numbers_in_answer": [
+        {"hub_score": {"hub": "dallas", "hazard": "composite"}, "tolerance": 0.5},
+        {"nri": {"hub": "dallas", "field": "HAIL_AFREQ"}, "tolerance": 0.1}
+      ]
     }
   },
   {

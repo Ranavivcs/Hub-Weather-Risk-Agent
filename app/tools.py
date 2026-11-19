@@ -95,7 +95,9 @@ def hub_breakdown(conn: sqlite3.Connection, hub: str) -> dict:
                 "weather_score": hs.weather_score,
                 "nri_score": hs.nri_score,
                 "inputs": [
-                    {"source": i.source, "what": i.label, "raw": None if i.raw is None else round(i.raw, 3),
+                    # Explicit unit: without it the model misread 0.548 (% of days) as 54.8%.
+                    {"source": i.source, "what": i.label, "raw": None if i.raw is None else round(i.raw, 2),
+                     "unit": "percent of days" if i.source == "weather" else "events per year",
                      "cap": i.cap, "score": round(i.score, 1)}
                     for i in hs.inputs
                 ],

@@ -29,6 +29,11 @@ export interface ChatResponse {
   tools_used: string[]
 }
 
+async function errorMessage(res: Response): Promise<string> {
+  const body = await res.json().catch(() => null)
+  return typeof body?.detail === 'string' ? body.detail : `Request failed (${res.status})`
+}
+
 /** POST /api/chat: send one message; pass the conversation id back for follow-ups (null starts a new one). */
 export async function sendChat(message: string, conversationId: string | null): Promise<ChatResponse> {
   const res = await fetch('/api/chat', {
@@ -36,9 +41,13 @@ export async function sendChat(message: string, conversationId: string | null): 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, conversation_id: conversationId }),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(typeof body?.detail === 'string' ? body.detail : `Request failed (${res.status})`)
-  }
+  if (!res.ok) throw new Error(await errorMessage(res))
+  return res.json()
+}
+
+/** GET /api/hubs: deterministic scores for all hubs, sorted by composite or by one hazard. */
+export async function fetchHubs(hazard: Hazard | null): Promise<HubScore[]> {
+  const res = await fetch(hazard ? `/api/hubs?hazard=${hazard}` : '/api/hubs')
+  if (!res.ok) throw new Error(await errorMessage(res))
   return res.json()
 }

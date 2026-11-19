@@ -24,6 +24,7 @@ from app import agent, conversations, risk, scoring
 from app.config import get_settings
 from app.db import connect
 from app.hubs import find_hub
+from app.metrics import load_nri
 from app.tools import run_tool
 
 CASES_FILE = Path(__file__).parent / "cases.json"
@@ -47,6 +48,8 @@ def _expected_number(conn, spec: dict) -> float:
         return run_tool(conn, spec["tool"], spec["args"])[spec["field"]]
     if "hub_score" in spec:
         return _hub_score(conn, spec["hub_score"]["hub"], spec["hub_score"]["hazard"])
+    if "nri" in spec:  # a raw FEMA input the explanation should cite
+        return load_nri(conn, find_hub(spec["nri"]["hub"]).county_fips)[spec["nri"]["field"]]
     top_spec = spec["hub_score_of_top"]
     top_hub = _top(conn, top_spec["hazard"], top_spec["region"])[0]
     return _hub_score(conn, top_hub, top_spec["score_hazard"])

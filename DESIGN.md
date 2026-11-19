@@ -52,6 +52,9 @@ Five hazards with equal weights (20% each):
 | Heat | max ≥ 35 °C | heat wave |
 | Severe storm | gusts ≥ 60 km/h | tornado, hail, strong wind |
 
+- The hazard types are FEMA's. FEMA lists 18; we use the 10 that are weather-driven and disrupt logistics.
+  Earthquake, wildfire, drought, landslide, avalanche, tsunami, volcanic activity and lightning are out of scope.
+  **Grouping the 10 into these 5 hazards is our choice**, for readability; FEMA does not group them.
 - Each raw input maps to 0–100 with a fixed cap: `min(raw / cap, 1) × 100`. Caps sit near the high end of large
   US cities, so 100 means "about as bad as a major US hub gets".
 - Hazard score = 50% observed weather + 50% FEMA. Hurricane uses FEMA only.
@@ -93,7 +96,8 @@ app/
   ingest.py         loads Open-Meteo + FEMA data (python -m app.ingest)
   sources/          thin clients for the two public APIs
   config.py         settings from environment / .env
-frontend/src/       React chat UI (App.tsx, AnswerCard.tsx, api.ts)
+frontend/src/       React UI: App.tsx (chat), AnswerCard.tsx (answer + score table), RankingPanel.tsx
+                    (GET /api/hubs), RichText.tsx, ScoreCell.tsx, hazards.ts, ErrorBoundary.tsx, api.ts
 tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM
 evals/              cases.json + run.py (real LLM, ground truth from code)
 ```
@@ -150,6 +154,12 @@ There is one Docker image and one Render web service. The UI and API share an or
 - **County-level FEMA data.** FEMA values describe the whole county, not the hub site. For example, Los Angeles
   County's winter and flood frequencies include its mountains and coast.
 - **Five years is a short record** for rare events: one bad season can move a score.
+- **Some overlap between hazards.**
+  - The gust input (days with gusts of 60 km/h or more) counts any windy day, including winter storms and the edge
+    of a hurricane, not only thunderstorms.
+  - A hurricane's rain counts toward Flood, because heavy rain is scored there.
+  
+  So a single event can raise two hazards. FEMA's frequencies keep the hazard types separate, which limits this.
 - **Exposure, not consequence.** The score measures how often a hazard occurs, not how much a closure costs at a
   given hub, and not how resilient the hub already is.
 - **The LLM can still phrase things imprecisely.** Numbers in the score table are always from code. The eval
