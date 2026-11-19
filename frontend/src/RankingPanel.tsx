@@ -19,29 +19,28 @@ export function RankingPanel({ onAskAbout, disabled }: { onAskAbout: (hub: HubSc
   }, [hazard])
 
   return (
-    <aside className="panel ranking">
-      <div className="panel-head">
-        <h2>Most exposed hubs</h2>
-        <select value={hazard ?? ''} onChange={(e) => setHazard((e.target.value || null) as Hazard | null)} aria-label="Rank by">
+    <section className="side-section">
+      <label className="rank-by">
+        Rank by
+        <select value={hazard ?? ''} onChange={(e) => setHazard((e.target.value || null) as Hazard | null)}>
           <option value="">Overall risk</option>
           {HAZARDS.map((h) => <option key={h} value={h}>{HAZARD_ICONS[h]} {HAZARD_LABELS[h]}</option>)}
         </select>
-      </div>
-      {error && <p className="panel-error">{error}</p>}
+      </label>
+      {error && <p className="side-error">{error}</p>}
       <ol className="rank-list">
         {hubs.map((h, i) => (
           <li key={h.hub_id}>
             <button className="rank-row" onClick={() => onAskAbout(h)} disabled={disabled}
-                    title={`Ask ${AGENT_NAME} about ${h.name}`}>
+                    title={`Ask ${AGENT_NAME} what drives ${h.name}'s score`}>
               <span className="rank-pos">{i + 1}</span>
-              <span className="rank-name">{h.name}<span className="sub">{h.state} · {h.region}</span></span>
-              <span className="rank-ask" aria-hidden>Ask →</span>
+              <span className="rank-name">{h.name}<span className="rank-sub">{h.state} · {h.region}</span></span>
               <ScoreCell score={hazard ? h.hazards[hazard] : h.composite} />
             </button>
           </li>
         ))}
       </ol>
-      <p className="panel-foot">Click any hub to ask {AGENT_NAME} what drives its score.</p>
-    </aside>
+      <p className="side-foot">Click a hub to ask {AGENT_NAME} why.</p>
+    </section>
   )
 }

@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { AnswerCard } from './AnswerCard'
 import { sendChat, type ChatResponse, type HubScore } from './api'
 import { AGENT_NAME } from './brand'
-import { MethodPanel } from './MethodPanel'
-import { RankingPanel } from './RankingPanel'
+import { Sidebar } from './Sidebar'
 import { useSpeechInput } from './useSpeechInput'
 import './App.css'
 
@@ -12,13 +11,11 @@ type Turn =
   | { role: 'agent'; reply: ChatResponse }
   | { role: 'error'; text: string; retry: string }
 
-type Overlay = 'method' | 'ranking' | null // side panels shown as overlays on narrow screens
-
 const EXAMPLES = [
-  { icon: '❄️', tag: 'Rank', q: 'Which hubs in the Midwest are most exposed to winter disruption?' },
-  { icon: '🌀', tag: 'Compare', q: 'Compare Miami and Houston in terms of hurricane and flood exposure.' },
-  { icon: '📅', tag: 'Weather history', q: 'What percentage of days in Denver last year had snowfall?' },
-  { icon: '🔎', tag: 'Explain', q: "Why is the Dallas hub's weather disruption risk high?" },
+  { icon: '❄️', q: 'Which hubs in the Midwest are most exposed to winter disruption?' },
+  { icon: '🌀', q: 'Compare Miami and Houston in terms of hurricane and flood exposure.' },
+  { icon: '📅', q: 'What percentage of days in Denver last year had snowfall?' },
+  { icon: '🔎', q: "Why is the Dallas hub's weather disruption risk high?" },
 ]
 
 export default function App() {
@@ -26,7 +23,7 @@ export default function App() {
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
-  const [overlay, setOverlay] = useState<Overlay>(null)
+  const [menuOpen, setMenuOpen] = useState(false) // sidebar drawer on narrow screens
   const endRef = useRef<HTMLDivElement>(null)
   const voice = useSpeechInput(setDraft)
 
@@ -42,7 +39,7 @@ export default function App() {
     setTurns((t) => [...t.filter((x) => x.role !== 'error'), { role: 'user', text: message }])
     setDraft('')
     setPending(true)
-    setOverlay(null)
+    setMenuOpen(false)
     try {
       const reply = await sendChat(message, conversationId)
       setConversationId(reply.conversation_id)
@@ -71,85 +68,78 @@ export default function App() {
     ask(`What drives the ${hub.name} hub's weather risk score?`)
   }
 
-  function toggle(panel: Exclude<Overlay, null>) {
-    setOverlay((o) => (o === panel ? null : panel))
-  }
-
   function newConversation() {
     setTurns([])
     setConversationId(null)
+    setMenuOpen(false)
   }
 
   return (
-    <div className="layout">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo" aria-hidden>🛰️</span>
-          <div>
-            <h1>{AGENT_NAME} <span className="brand-light">Weather Risk Agent</span></h1>
-            <p>Know which hubs to protect first</p>
-          </div>
-        </div>
-        <div className="top-actions">
-          <button className="ghost toggle-method" onClick={() => toggle('method')}>
-            {overlay === 'method' ? 'Close' : 'How we rank'}
-          </button>
-          <button className="ghost toggle-ranking" onClick={() => toggle('ranking')}>
-            {overlay === 'ranking' ? 'Close' : 'Ranking'}
-          </button>
-          <button className="ghost" onClick={newConversation} disabled={pending || turns.length === 0}>
-            New<span className="wide-only"> conversation</span>
-          </button>
-        </div>
-      </header>
+    <div className="shell">
+      <Sidebar
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onAskAbout={askAboutHub}
+        onNewConversation={newConversation}
+        busy={pending}
+        canReset={turns.length > 0}
+      />
+      {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden />}
 
-      <div className={`body overlay-${overlay ?? 'none'}`}>
-        <MethodPanel />
+      <div className="main">
+        <header className="mobile-bar">
+          <button className="menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu">☰</button>
+          <span className="brand-name">{AGENT_NAME}</span>
+        </header>
 
-        <section className="chat-column">
-          <main className="chat" aria-live="polite">
-            <div className="msg agent intro">
-              <div className="avatar" aria-hidden>🛰️</div>
-              <div>
-                <p className="intro-hello">Hi, I'm {AGENT_NAME}, your weather risk agent.</p>
-                <p>
-                  I help you decide which distribution hubs are most exposed to weather disruption and should be
-                  first in line for resilience upgrades. Ask me to rank hubs, compare them, or explain what drives
-                  a hub's risk.
-                </p>
-                {turns.length === 0 && (
-                  <div className="examples">
-                    {EXAMPLES.map((e) => (
-                      <button key={e.q} className="example" onClick={() => ask(e.q)}>
-                        <span className="example-tag"><span aria-hidden>{e.icon}</span> {e.tag}</span>
-                        {e.q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {turns.map((turn, i) => {
-              if (turn.role === 'user') return <div key={i} className="msg user">{turn.text}</div>
-              if (turn.role === 'agent') return <div key={i} className="msg agent"><AnswerCard reply={turn.reply} /></div>
-              return (
-                <div key={i} className="msg error" role="alert">
-                  <span>Sorry, I couldn't answer that: {turn.text}</span>
-                  <button className="ghost" onClick={() => ask(turn.retry)}>Try again</button>
-                </div>
-              )
-            })}
-
-            {pending && (
-              <div className="msg agent thinking">
-                <span className="dots" aria-hidden><i /><i /><i /></span>
-                {AGENT_NAME} is checking the hub data…
+        <main className="chat" aria-live="polite">
+          <section className="hero">
+            <div className="avatar" aria-hidden>🛰️</div>
+            <h1>Hi, I'm {AGENT_NAME}, your weather risk agent.</h1>
+            <p>
+              I help you find which distribution hubs are most exposed to weather disruption, so you know where
+              resilience upgrades pay off first. Ask me to rank, compare or explain hubs.
+            </p>
+            {turns.length === 0 && (
+              <div className="starters">
+                {EXAMPLES.map((e) => (
+                  <button key={e.q} className="starter" onClick={() => ask(e.q)}>
+                    <span aria-hidden>{e.icon}</span> {e.q}
+                  </button>
+                ))}
               </div>
             )}
-            <div ref={endRef} />
-          </main>
+          </section>
 
+          {turns.map((turn, i) => {
+            if (turn.role === 'user') return <div key={i} className="msg user">{turn.text}</div>
+            if (turn.role === 'agent') {
+              return (
+                <div key={i} className="msg agent">
+                  <div className="avatar small" aria-hidden>🛰️</div>
+                  <AnswerCard reply={turn.reply} />
+                </div>
+              )
+            }
+            return (
+              <div key={i} className="msg error" role="alert">
+                <span>Sorry, I couldn't answer that: {turn.text}</span>
+                <button className="link" onClick={() => ask(turn.retry)}>Try again</button>
+              </div>
+            )
+          })}
+
+          {pending && (
+            <div className="msg agent thinking">
+              <div className="avatar small" aria-hidden>🛰️</div>
+              <span className="dots" aria-hidden><i /><i /><i /></span>
+              {AGENT_NAME} is checking the hub data…
+            </div>
+          )}
+          <div ref={endRef} />
+        </main>
+
+        <div className="composer-wrap">
           <form className="composer" onSubmit={onSubmit}>
             <textarea
               value={draft}
@@ -173,16 +163,14 @@ export default function App() {
                 {voice.listening ? '■' : '🎤'}
               </button>
             )}
-            <button type="submit" disabled={pending || !draft.trim()}>Send</button>
+            <button type="submit" className="send" disabled={pending || !draft.trim()}>Send</button>
           </form>
           <p className="hint">
             {voice.error ?? (voice.listening
               ? 'Listening… speak your question, then press Send'
-              : `Press Enter to send · Shift+Enter for a new line${voice.supported ? ' · 🎤 to speak' : ''}`)}
+              : `Enter to send · Shift+Enter for a new line${voice.supported ? ' · 🎤 to speak' : ''}`)}
           </p>
-        </section>
-
-        <RankingPanel onAskAbout={askAboutHub} disabled={pending} />
+        </div>
       </div>
     </div>
   )

@@ -100,9 +100,10 @@ app/
   alerts.py         score-change alerts: snapshot, compare, webhook (python -m app.alerts)
   rate_limit.py     per-IP limit for /api/chat
   config.py         settings from environment / .env, data window
-frontend/src/       React UI: App.tsx (chat), AnswerCard.tsx (answer + score table), MethodPanel.tsx
-                    ("How we rank"), RankingPanel.tsx (GET /api/hubs), useSpeechInput.ts (voice),
-                    RichText.tsx, ScoreCell.tsx, hazards.ts, brand.ts, ErrorBoundary.tsx, api.ts
+frontend/src/       React UI: App.tsx (chat), Sidebar.tsx (ranking / "How we rank" tabs),
+                    AnswerCard.tsx (takeaway, reasoning, score table, caveats), RankingPanel.tsx
+                    (GET /api/hubs), MethodPanel.tsx, useSpeechInput.ts (voice), RichText.tsx, text.ts,
+                    ScoreCell.tsx, hazards.ts, brand.ts, ErrorBoundary.tsx, api.ts
 tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM, alerts, API, window/ingest
 evals/              cases.json + run.py (real LLM, ground truth from code)
 ```
