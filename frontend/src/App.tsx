@@ -4,6 +4,7 @@ import { sendChat, type ChatResponse, type HubScore } from './api'
 import { AGENT_NAME } from './brand'
 import { MethodPanel } from './MethodPanel'
 import { RankingPanel } from './RankingPanel'
+import { useSpeechInput } from './useSpeechInput'
 import './App.css'
 
 type Turn =
@@ -27,6 +28,7 @@ export default function App() {
   const [pending, setPending] = useState(false)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const voice = useSpeechInput(setDraft)
 
   // Scroll to the newest message when the list changes. Braces matter: an effect may only return a
   // cleanup function, and scrollIntoView returns a Promise in current browsers.
@@ -159,9 +161,25 @@ export default function App() {
               disabled={pending}
               aria-label="Message"
             />
+            {voice.supported && (
+              <button
+                type="button"
+                className={`mic ${voice.listening ? 'listening' : ''}`}
+                onClick={() => (voice.listening ? voice.stop() : voice.start(draft.trim()))}
+                disabled={pending}
+                aria-label={voice.listening ? 'Stop voice input' : 'Speak your question'}
+                title={voice.listening ? 'Stop listening' : 'Speak your question'}
+              >
+                {voice.listening ? '■' : '🎤'}
+              </button>
+            )}
             <button type="submit" disabled={pending || !draft.trim()}>Send</button>
           </form>
-          <p className="hint">Press Enter to send · Shift+Enter for a new line</p>
+          <p className="hint">
+            {voice.error ?? (voice.listening
+              ? 'Listening… speak your question, then press Send'
+              : `Press Enter to send · Shift+Enter for a new line${voice.supported ? ' · 🎤 to speak' : ''}`)}
+          </p>
         </section>
 
         <RankingPanel onAskAbout={askAboutHub} disabled={pending} />

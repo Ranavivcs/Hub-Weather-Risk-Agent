@@ -224,3 +224,9 @@ button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2p
   .intro { flex-direction: column; }
   .msg.user { max-width: 90%; }
 }
+
+/* ---- voice input ---- */
+.composer button.mic { padding: 9px 12px; background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.composer button.mic:hover:not(:disabled) { border-color: var(--accent); }
+.composer button.mic.listening { background: var(--vhigh-bg); color: var(--vhigh-fg); border-color: var(--vhigh-fg); animation: pulse-ring 1.4s infinite; }
+@keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 rgb(220 38 38 / 35%); } 50% { box-shadow: 0 0 0 6px rgb(220 38 38 / 0%); } }

@@ -5,15 +5,25 @@ Run: `uvicorn app.main:app --reload`  ->  API docs at http://localhost:8000/docs
 
 import logging
 import os
+import secrets
 import sqlite3
+import threading
 from collections.abc import Iterator
 from typing import Literal
 
 import anthropic
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+)
 from fastapi.staticfiles import StaticFiles
 
-from app import agent, conversations
+from app import agent, alerts, conversations, ingest
 from app.config import REPO_ROOT, get_settings
 from app.db import connect
 from app.hubs import REGIONS
@@ -98,6 +108,46 @@ def chat(req: ChatRequest, request: Request, conn: sqlite3.Connection = Depends(
         raise HTTPException(502, str(exc)) from exc
     return ChatResponse(conversation_id=result.conversation_id, answer=result.answer,
                         hub_scores=result.hub_scores, tools_used=result.tools_used)
+
+
+_alert_run_lock = threading.Lock()  # one alert check at a time
+
+
+def _run_alert_check(refresh_data: bool) -> None:
+    """Background job: optionally refresh data, then compare scores and notify. Own connection (own thread)."""
+    settings = get_settings()
+    conn = connect(settings.db_path)
+    try:
+        if refresh_data:
+            ingest.refresh(conn)
+        alerts.check_score_changes(conn, settings.alert_threshold, settings.alert_webhook_url)
+    except Exception:  # a background job has no caller to report to, so log it
+        logging.getLogger(__name__).exception("alert check failed")
+    finally:
+        conn.close()
+        _alert_run_lock.release()
+
+
+@app.post("/api/alerts/check", status_code=202)
+def trigger_alert_check(
+    background: BackgroundTasks,
+    refresh: bool = Query(False, description="Fetch new public data before recomputing"),
+    x_alert_token: str | None = Header(None),
+) -> dict:
+    """Webhook-style trigger for the score-change alert (e.g. called daily by an external cron service).
+
+    POST: it starts work and changes state (stores a snapshot). Needs header `X-Alert-Token` matching
+    ALERT_TOKEN. Returns 202 at once; the check runs in the background (a refresh can take a minute).
+    """
+    expected = get_settings().alert_token
+    if expected is None:
+        raise HTTPException(503, "Alerts are not configured (set ALERT_TOKEN)")
+    if x_alert_token is None or not secrets.compare_digest(x_alert_token, expected):
+        raise HTTPException(401, "Missing or wrong X-Alert-Token")
+    if not _alert_run_lock.acquire(blocking=False):
+        raise HTTPException(409, "An alert check is already running")
+    background.add_task(_run_alert_check, refresh)
+    return {"status": "started", "refresh": refresh}
 
 
 # The built chat UI (frontend/dist). Mounted last so /api routes take precedence.

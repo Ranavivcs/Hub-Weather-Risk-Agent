@@ -47,8 +47,8 @@ For UI development with hot reload, run `npm run dev` in `frontend/` (port 5173,
 ## Deploy (Render)
 
 `Dockerfile` builds the UI, installs the API and bakes the public data into the image (ingest runs at build
-time). `render.yaml` defines one free Docker web service. In Render: **New → Blueprint**, pick this repo,
-and enter `ANTHROPIC_API_KEY` when prompted. `/api/chat` is limited to `CHAT_LIMIT_PER_HOUR` (default 20)
+time). In Render, either **New → Web Service** (runtime Docker, health check `/api/health`) or **New → Blueprint**
+(reads `render.yaml`). Set `ANTHROPIC_API_KEY` as an environment variable in the dashboard. `/api/chat` is limited to `CHAT_LIMIT_PER_HOUR` (default 20)
 messages per client IP. Conversations live in the container's SQLite file and reset on each redeploy.
 
 Local check of the image: `docker build -t hub-weather-risk-agent .` then
@@ -61,9 +61,24 @@ Local check of the image: `docker build -t hub-weather-risk-agent .` then
 | `POST /api/chat` | Send a message. Body `{"message": "...", "conversation_id": null}`; omit/null the id to start a conversation, pass the returned id back for follow-ups. Returns the structured answer, the code-computed scores of the hubs it names, and the tools used. |
 | `GET /api/hubs?hazard=&region=` | Deterministic scores for all hubs, most exposed first. No LLM. |
 | `GET /api/health` | Status, whether data is loaded, whether an API key is configured. |
+| `POST /api/alerts/check?refresh=` | Score-change alert check (header `X-Alert-Token`). Returns 202 and runs in the background. Disabled until `ALERT_TOKEN` is set. |
 
 Example:
 
 ```powershell
-curl -X POST http://localhost:8000/api/chat -H "Content-Type: application/json" -d '{\"message\": \"Why is Dallas high risk?\"}'
+curl.exe -X POST http://localhost:8000/api/chat -H "Content-Type: application/json" -d '{\"message\": \"Why is Dallas high risk?\"}'
 ```
+
+## Score-change alerts and voice (bonus)
+
+```powershell
+# Record a baseline, then check again later (or after new data) and alert on changes
+.venv\Scripts\python -m app.alerts
+.venv\Scripts\python -m app.alerts --refresh
+```
+
+- Set `ALERT_WEBHOOK_URL` (for example a webhook.site URL) to receive the JSON alert.
+- `DATA_END=latest` makes the 5-year window roll forward, so scores follow new weather.
+- To schedule it, set `ALERT_TOKEN` and have a cron service call `POST /api/alerts/check?refresh=true` daily with
+  header `X-Alert-Token`.
+- **Voice:** click 🎤 in the message box (Chrome or Edge) and speak your question, then press Send.

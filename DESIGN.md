@@ -4,8 +4,8 @@
 
 Help analysts choose which hubs to invest in by answering questions about hub weather exposure: rankings,
 comparisons, weather statistics and "why" explanations, with follow-ups. Deliberately narrow: 15 hubs, five
-hazards, five years of history, one deterministic score. The score measures **relative exposure** (0–100);
-it is not a probability, and not a dollar loss.
+hazards, five years of history, one deterministic score. The score measures **exposure** (0–100): how often disruptive weather hits a hub.
+It is not a probability, and not a dollar loss.
 
 ## Architecture
 
@@ -23,6 +23,8 @@ it is not a probability, and not a dollar loss.
      │                      │
      ▼                      ▼
  SQLite (data/weather.db) ◄── ingest.py ◄── Open-Meteo Historical API, FEMA NRI (ArcGIS API)
+     ▲
+     └── alerts.py ── POST JSON ──► ALERT_WEBHOOK_URL        (triggered by POST /api/alerts/check or CLI)
 ```
 
 One request, step by step:
@@ -95,10 +97,13 @@ app/
   db.py             SQLite schema + connection
   ingest.py         loads Open-Meteo + FEMA data (python -m app.ingest)
   sources/          thin clients for the two public APIs
-  config.py         settings from environment / .env
-frontend/src/       React UI: App.tsx (chat), AnswerCard.tsx (answer + score table), RankingPanel.tsx
-                    (GET /api/hubs), RichText.tsx, ScoreCell.tsx, hazards.ts, ErrorBoundary.tsx, api.ts
-tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM
+  alerts.py         score-change alerts: snapshot, compare, webhook (python -m app.alerts)
+  rate_limit.py     per-IP limit for /api/chat
+  config.py         settings from environment / .env, data window
+frontend/src/       React UI: App.tsx (chat), AnswerCard.tsx (answer + score table), MethodPanel.tsx
+                    ("How we rank"), RankingPanel.tsx (GET /api/hubs), useSpeechInput.ts (voice),
+                    RichText.tsx, ScoreCell.tsx, hazards.ts, brand.ts, ErrorBoundary.tsx, api.ts
+tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM, alerts, API, window/ingest
 evals/              cases.json + run.py (real LLM, ground truth from code)
 ```
 
@@ -109,8 +114,8 @@ Tables:
 - `nri_county(county_fips, field, value, fetched_at)`
 - `conversations(id, created_at)`
 - `messages(id, conversation_id, role, content_json, created_at)`
-- `score_snapshots(id, hub_id, computed_at, composite, breakdown_json)`: history for change alerts
-  (reserved for the bonus alert; not used yet)
+- `score_snapshots(id, hub_id, computed_at, composite, breakdown_json)`: one row per hub per alert check;
+  the alert compares against each hub's latest row
 
 Why SQLite:
 - The data is small (~27k weather rows).
@@ -124,6 +129,37 @@ half a tool exchange in the history.
 
 When to move to Postgres: several app instances or writers, many more hubs or years, or analysts needing shared
 history across deployments. The SQL is plain enough to port.
+
+## Score-change alerts (bonus)
+
+`app/alerts.py` does the following:
+1. Recompute every hub's score.
+2. Compare it with the hub's latest row in `score_snapshots`.
+3. Store the new snapshot.
+4. POST a JSON alert to `ALERT_WEBHOOK_URL` for every hub whose overall score moved by at least `ALERT_THRESHOLD`
+   points (default 1). The alert includes the per-hazard deltas, so it shows what moved.
+
+The first run only records a baseline.
+
+- **Why scores change.** With the default fixed window (2021–2025) they never change, so `DATA_END=latest` makes
+  the 5-year window roll forward. The ingest is incremental: a daily refresh fetches only the new days, one small
+  call per hub. A FEMA data update also changes scores.
+- **Triggers.**
+  - `python -m app.alerts [--refresh]`.
+  - `POST /api/alerts/check?refresh=true` with header `X-Alert-Token` (`ALERT_TOKEN`). It returns `202` and runs
+    in the background, so an external scheduler such as cron-job.org can call it daily without hitting its timeout.
+  - The endpoint is disabled while `ALERT_TOKEN` is unset.
+- **Verified with real data.** A baseline on 2021–2025, then a rolled-forward window (+316 days of 2026 weather),
+  flagged Houston −1.7 and Miami +1.2.
+- **Limit on Render's free plan.** Snapshots live in the container's SQLite file, so a restart resets the baseline.
+  The alert job runs inside the web service on purpose: a separate cron service couldn't see that file.
+  Persistent alert history would need Postgres.
+
+## Voice input (bonus)
+
+The composer has a mic button that uses the browser's built-in Web Speech API. Speech is transcribed into the
+message box; the user reviews it and presses Send, and nothing is sent automatically. It works in Chrome and
+Edge, and the button is hidden where the API is unsupported. There is no backend change.
 
 ## Deployment
 
@@ -141,7 +177,7 @@ There is one Docker image and one Render web service. The UI and API share an or
 - **The hub network is ours.** The brief names no hubs. We chose 15 well-known US freight cities: every city the
   example questions name, six in the Midwest, and a spread of hazard profiles. Coordinates are city centers.
 - **Regions follow the US Census Bureau.**
-- **"Last year" means 2025**, the latest full year in the data.
+- **"Last year" means 2025**, the latest full year in the data (with a rolling window: the latest full year in it).
 - **"Had snowfall" means ≥ 0.1 cm (measurable).** The winter score uses ≥ 1 cm.
 - **Disruption thresholds** (1 cm snow, −10 °C, 50 mm rain, 35 °C, 60 km/h gusts) are reasonable operating
   thresholds, not company data. They should be calibrated against actual hub closure records.

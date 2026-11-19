@@ -10,3 +10,8 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-haiku-5-5
+      # Optional score-change alerts (bonus): leave unset to disable the endpoint
+      - key: ALERT_TOKEN
+        sync: false
+      - key: ALERT_WEBHOOK_URL
+        sync: false

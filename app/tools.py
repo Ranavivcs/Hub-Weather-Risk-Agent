@@ -5,7 +5,8 @@ explains the results. Invalid inputs raise ToolError, which goes back to the LLM
 """
 
 import sqlite3
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app import risk, scoring
 from app.config import DATA_END, DATA_START, DATA_YEARS
