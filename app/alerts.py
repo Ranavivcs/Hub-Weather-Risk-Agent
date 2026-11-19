@@ -17,9 +17,10 @@ from datetime import UTC, datetime
 import httpx
 
 from app import risk
-from app.config import DATA_END, DATA_START, get_settings
+from app.config import get_settings
 from app.db import connect
 from app.hubs import find_hub
+from app.window import effective_window
 
 log = logging.getLogger(__name__)
 
@@ -81,8 +82,9 @@ def send_webhook(url: str, payload: dict) -> str:
 def check_score_changes(conn: sqlite3.Connection, threshold: float, webhook_url: str | None) -> CheckResult:
     """Recompute all scores, store a snapshot, and alert on hubs that moved by >= threshold points."""
     computed_at = datetime.now(UTC).isoformat(timespec="seconds")
+    window = effective_window(conn)  # once per check: the scores and the stored snapshot use the same window
     current = {s.hub_id: {"composite": s.composite, "hazards": {h: hs.score for h, hs in s.hazards.items()}}
-               for s in risk.score_all(conn)}
+               for s in risk.score_all(conn, window)}
     previous = _latest_snapshots(conn)
     changes = find_changes(previous, current, threshold)
 
@@ -90,7 +92,7 @@ def check_score_changes(conn: sqlite3.Connection, threshold: float, webhook_url:
         conn.executemany(
             "INSERT INTO score_snapshots (hub_id, computed_at, composite, breakdown_json) VALUES (?, ?, ?, ?)",
             [(hub_id, computed_at, v["composite"],
-              json.dumps({"hazards": v["hazards"], "window": [DATA_START, DATA_END]}))
+              json.dumps({"hazards": v["hazards"], "window": [window.start_iso, window.end_iso]}))
              for hub_id, v in current.items()],
         )
 
@@ -103,7 +105,7 @@ def check_score_changes(conn: sqlite3.Connection, threshold: float, webhook_url:
             "event": "hub_risk_score_changed",
             "computed_at": computed_at,
             "threshold": threshold,
-            "data_window": [DATA_START, DATA_END],
+            "data_window": [window.start_iso, window.end_iso],
             "changes": [asdict(c) for c in changes],
         })
     log.info("alert check: baseline=%s changes=%d webhook=%s", not previous, len(changes), status)

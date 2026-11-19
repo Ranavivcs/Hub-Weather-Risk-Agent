@@ -1,21 +1,30 @@
 """Shared fixtures: a temporary SQLite database filled with small synthetic data (no network)."""
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
-from app import config
+from app import window as window_mod
 from app.db import connect
 from app.hubs import HUBS
 from app.sources.fema_nri import NRI_FIELDS
 
 
+@pytest.fixture(autouse=True)
+def default_data_window(monkeypatch):
+    """Pin DATA_END to the default for every test, so a local .env (e.g. DATA_END=latest) can't change results.
+
+    Tests that need another window set DATA_END themselves with monkeypatch.
+    """
+    monkeypatch.setenv("DATA_END", window_mod.DEFAULT_END)
+
+
 @pytest.fixture
-def conn(tmp_path, monkeypatch):
-    """A database where every hub has the full date window; Denver gets snow every 10th day."""
+def conn(tmp_path):
+    """A database where every hub has the full default window (2021-2025); Denver gets snow every 10th day."""
     db = connect(tmp_path / "test.db")
-    start, end = date.fromisoformat(config.DATA_START), date.fromisoformat(config.DATA_END)
-    days = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    w = window_mod.target_window()
+    days = [w.start + timedelta(days=i) for i in range((w.end - w.start).days + 1)]
     rows = []
     for hub in HUBS:
         for i, d in enumerate(days):
@@ -29,3 +38,9 @@ def conn(tmp_path, monkeypatch):
     db.commit()
     yield db
     db.close()
+
+
+@pytest.fixture
+def window(conn):
+    """The effective window of the `conn` fixture (the default 2021-2025, fully stored)."""
+    return window_mod.effective_window(conn)

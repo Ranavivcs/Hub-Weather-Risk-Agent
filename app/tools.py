@@ -9,10 +9,10 @@ from collections.abc import Callable
 from typing import Any
 
 from app import risk, scoring
-from app.config import DATA_END, DATA_START, DATA_YEARS
 from app.hubs import HUBS, REGIONS, Hub, find_hub
 from app.metrics import WEATHER_METRICS, day_percentage
 from app.schemas import HubScoreOut
+from app.window import Window
 
 
 class ToolError(ValueError):
@@ -28,8 +28,8 @@ def _resolve_hub(name: str) -> Hub:
     return hub
 
 
-def _ranked(conn: sqlite3.Connection, hazard: str | None = None) -> list[scoring.HubScore]:
-    return scoring.rank(risk.score_all(conn), hazard)
+def _ranked(conn: sqlite3.Connection, window: Window, hazard: str | None = None) -> list[scoring.HubScore]:
+    return scoring.rank(risk.score_all(conn, window), hazard)
 
 
 def hub_score_out(score: scoring.HubScore, composite_rank: int) -> HubScoreOut:
@@ -47,21 +47,21 @@ def hub_score_out(score: scoring.HubScore, composite_rank: int) -> HubScoreOut:
     )
 
 
-def scores_by_id(conn: sqlite3.Connection) -> dict[str, HubScoreOut]:
-    """Every hub's compact score keyed by hub id, with its composite rank among all hubs."""
-    return {s.hub_id: hub_score_out(s, i + 1) for i, s in enumerate(_ranked(conn))}
+def scores_by_id(conn: sqlite3.Connection, window: Window) -> dict[str, HubScoreOut]:
+    """Every hub's compact score over `window`, keyed by hub id, with its composite rank among all hubs."""
+    return {s.hub_id: hub_score_out(s, i + 1) for i, s in enumerate(_ranked(conn, window))}
 
 
-# ---- handlers ----
+# ---- handlers (each gets the turn's window from run_tool; list_hubs doesn't need it) ----
 
-def list_hubs(conn: sqlite3.Connection, region: str | None) -> dict:
+def list_hubs(conn: sqlite3.Connection, window: Window, region: str | None) -> dict:
     hubs = [h for h in HUBS if region is None or h.region == region]
     return {"hubs": [{"hub_id": h.id, "name": h.name, "state": h.state, "region": h.region} for h in hubs]}
 
 
-def rank_hubs(conn: sqlite3.Connection, hazard: str, region: str | None, top_n: int | None) -> dict:
+def rank_hubs(conn: sqlite3.Connection, window: Window, hazard: str, region: str | None, top_n: int | None) -> dict:
     by_hazard = None if hazard == "composite" else hazard
-    all_ranked = _ranked(conn, by_hazard)
+    all_ranked = _ranked(conn, window, by_hazard)
     rows = []
     for position, s in enumerate(all_ranked, start=1):
         hub = find_hub(s.hub_id)
@@ -75,9 +75,9 @@ def rank_hubs(conn: sqlite3.Connection, hazard: str, region: str | None, top_n: 
     return {"ranked_by": hazard, "region": region or "all", "scale": "0-100, higher = more exposed", "hubs": rows}
 
 
-def hub_breakdown(conn: sqlite3.Connection, hub: str) -> dict:
+def hub_breakdown(conn: sqlite3.Connection, window: Window, hub: str) -> dict:
     target = _resolve_hub(hub)
-    ranked = _ranked(conn)
+    ranked = _ranked(conn, window)
     position = next(i for i, s in enumerate(ranked, start=1) if s.hub_id == target.id)
     score = ranked[position - 1]
     hazard_ranks = {h: [s.hub_id for s in scoring.rank(ranked, h)].index(target.id) + 1 for h in scoring.HAZARDS}
@@ -108,19 +108,21 @@ def hub_breakdown(conn: sqlite3.Connection, hub: str) -> dict:
     }
 
 
-def compare_hubs(conn: sqlite3.Connection, hubs: list[str]) -> dict:
+def compare_hubs(conn: sqlite3.Connection, window: Window, hubs: list[str]) -> dict:
     if not 2 <= len(hubs) <= 5:
         raise ToolError("compare_hubs needs between 2 and 5 hubs")
-    return {"hubs": [hub_breakdown(conn, h) for h in hubs]}
+    return {"hubs": [hub_breakdown(conn, window, h) for h in hubs]}
 
 
-def weather_stats(conn: sqlite3.Connection, hub: str, metric: str, year: int | None, threshold: float | None) -> dict:
+def weather_stats(
+    conn: sqlite3.Connection, window: Window, hub: str, metric: str, year: int | None, threshold: float | None
+) -> dict:
     target = _resolve_hub(hub)
     if metric not in WEATHER_METRICS:
         raise ToolError(f"Unknown metric {metric!r}. Known: {', '.join(WEATHER_METRICS)}")
-    if year is not None and year not in DATA_YEARS:
-        raise ToolError(f"No data for {year}. Available years: {DATA_YEARS[0]}-{DATA_YEARS[-1]}")
-    start, end = (f"{year}-01-01", f"{year}-12-31") if year else (DATA_START, DATA_END)
+    if year is not None and year not in window.years:
+        raise ToolError(f"No data for {year}. Available years: {window.years[0]}-{window.years[-1]}")
+    start, end = (f"{year}-01-01", f"{year}-12-31") if year else (window.start_iso, window.end_iso)
     result = day_percentage(conn, target.id, metric, start, end, threshold)
     spec = WEATHER_METRICS[metric]
     return {
@@ -174,8 +176,9 @@ TOOL_SCHEMAS: list[dict] = [
           {"hubs": {"type": "array", "items": _HUB, "description": "2 to 5 hubs"}}),
     _tool(
         "weather_stats",
+        # The years are in the system prompt (they move with the data); the tool list stays fixed.
         "Percentage of days meeting a weather condition at a hub, for one year or the whole "
-        f"{DATA_YEARS[0]}-{DATA_YEARS[-1]} window. Metrics: "
+        "5-year data window. Metrics: "
         + "; ".join(f"{name} = {m.description} (default {m.column} {m.op} {m.default_threshold} {m.unit})"
                     for name, m in WEATHER_METRICS.items()),
         {
@@ -196,12 +199,15 @@ _HANDLERS: dict[str, Callable[..., dict]] = {
 }
 
 
-def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any]) -> dict:
-    """Execute one tool call. Raises ToolError for unknown tools or bad arguments."""
+def run_tool(conn: sqlite3.Connection, name: str, args: dict[str, Any], window: Window) -> dict:
+    """Execute one tool call over the caller's data window. Raises ToolError for unknown tools or bad arguments.
+
+    The window is required so every tool in a chat turn uses the same window as the system prompt.
+    """
     handler = _HANDLERS.get(name)
     if handler is None:
         raise ToolError(f"Unknown tool {name!r}")
     try:
-        return handler(conn, **args)
+        return handler(conn, window, **args)
     except TypeError as exc:  # wrong/missing argument names
         raise ToolError(f"Bad arguments for {name}: {exc}") from exc

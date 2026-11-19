@@ -17,10 +17,11 @@ import anthropic
 from pydantic import ValidationError
 
 from app import conversations, scoring
-from app.config import DATA_END, DATA_START, DATA_YEARS, get_settings
+from app.config import get_settings
 from app.hubs import HUBS
 from app.schemas import AgentAnswer, HubScoreOut, answer_json_schema
 from app.tools import TOOL_SCHEMAS, ToolError, run_tool, scores_by_id
+from app.window import Window, effective_window
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ def _methodology() -> str:
     return "\n".join(lines)
 
 
-def system_prompt(today: date) -> str:
+def system_prompt(today: date, window: Window) -> str:
+    """The system prompt for one turn. `window` is the turn's effective window (the one the tools use)."""
     hubs = "; ".join(f"{h.id} = {h.name}, {h.state} ({h.region})" for h in HUBS)
     return f"""You are a weather-risk analyst assistant for a US logistics company. Analysts use you to decide which \
 distribution hubs are most exposed to weather disruption and should get resilience investment.
@@ -62,8 +64,8 @@ Hub network (assumed; the company gave no list): {hubs}.
 
 Data:
 - Observed weather: Open-Meteo Historical (ERA5-based reanalysis, ~25 km grid) at each hub's city center, daily, \
-{DATA_START} to {DATA_END}. Years available: {DATA_YEARS[0]}-{DATA_YEARS[-1]}. "Last year" means {DATA_YEARS[-1]}, \
-the latest full year in the data.
+{window.start_iso} to {window.end_iso}. Full years available: {window.years[0]}-{window.years[-1]}. "Last year" \
+means {window.years[-1]}, the latest full year in the data.
 - FEMA National Risk Index: expected events per year (annualized frequency) for the hub's county.
 
 Scoring (deterministic, done by code; every input maps to 0-100 as min(raw / cap, 1) x 100; hazard score = 50% \
@@ -132,7 +134,10 @@ def run_turn(conn: sqlite3.Connection, conversation_id: str, user_message: str,
     turn: list[dict] = [{"role": "user", "content": [{"type": "text", "text": user_message}]}]
     tools_used: list[str] = []
     fix_attempts = 0
-    system = system_prompt(date.today())
+    # One window for the whole turn: the prompt, every tool call and the attached scores all use it, so a
+    # data refresh that finishes mid-turn can't make them disagree. Raises DataNotLoadedError (-> 503).
+    window = effective_window(conn)
+    system = system_prompt(date.today(), window)
 
     for _ in range(MAX_TOOL_ROUNDS):
         response = client.messages.create(
@@ -150,7 +155,7 @@ def run_turn(conn: sqlite3.Connection, conversation_id: str, user_message: str,
         turn.append({"role": "assistant", "content": _blocks_to_params(response.content)})
 
         if response.stop_reason == "tool_use":
-            turn.append({"role": "user", "content": _run_tools(conn, response.content, tools_used)})
+            turn.append({"role": "user", "content": _run_tools(conn, window, response.content, tools_used)})
             continue
 
         raw = _final_text(response)
@@ -166,13 +171,13 @@ def run_turn(conn: sqlite3.Connection, conversation_id: str, user_message: str,
             continue
 
         conversations.append_turn(conn, conversation_id, turn)
-        all_scores = scores_by_id(conn)
+        all_scores = scores_by_id(conn, window)
         return TurnResult(conversation_id, answer, [all_scores[h] for h in answer.hub_ids], tools_used)
 
     raise AgentError(f"No final answer after {MAX_TOOL_ROUNDS} model calls.")
 
 
-def _run_tools(conn: sqlite3.Connection, content, tools_used: list[str]) -> list[dict]:
+def _run_tools(conn: sqlite3.Connection, window: Window, content, tools_used: list[str]) -> list[dict]:
     """Run every tool_use block of one response; return all results in ONE user message (parallel-call safe)."""
     results = []
     for block in content:
@@ -180,7 +185,7 @@ def _run_tools(conn: sqlite3.Connection, content, tools_used: list[str]) -> list
             continue
         tools_used.append(block.name)
         try:
-            output, is_error = run_tool(conn, block.name, block.input), False
+            output, is_error = run_tool(conn, block.name, block.input, window), False
         except ToolError as exc:
             output, is_error = {"error": str(exc)}, True
         log.info("tool %s(%s) error=%s", block.name, json.dumps(block.input), is_error)

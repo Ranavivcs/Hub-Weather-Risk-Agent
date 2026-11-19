@@ -3,8 +3,6 @@
 import sqlite3
 from dataclasses import dataclass
 
-from app.config import DATA_END, DATA_START
-
 
 @dataclass(frozen=True)
 class WeatherMetric:
@@ -45,11 +43,15 @@ def day_percentage(
     conn: sqlite3.Connection,
     hub_id: str,
     metric: str,
-    start: str = DATA_START,
-    end: str = DATA_END,
+    start: str,
+    end: str,
     threshold: float | None = None,
 ) -> MetricResult:
-    """Count the days in [start, end] where the metric's condition holds. Days with missing values are excluded."""
+    """Count the days in [start, end] where the metric's condition holds. Days with missing values are excluded.
+
+    No default dates on purpose: callers pass the window they computed (see window.py), so nothing is
+    frozen at import time.
+    """
     spec = WEATHER_METRICS[metric]  # KeyError for unknown metrics, by design
     thr = spec.default_threshold if threshold is None else threshold
     row = conn.execute(

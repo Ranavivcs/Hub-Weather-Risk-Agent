@@ -32,6 +32,7 @@ from app.risk import DataNotLoadedError
 from app.schemas import ChatRequest, ChatResponse, HubScoreOut
 from app.scoring import HAZARDS
 from app.tools import scores_by_id
+from app.window import effective_window, target_window
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 for noisy in ("httpx", "httpx2"):  # the Anthropic SDK logs every request at INFO
@@ -51,10 +52,19 @@ def get_conn() -> Iterator[sqlite3.Connection]:
 
 @app.get("/api/health")
 def health(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
-    """Liveness plus readiness: is data loaded, is an API key configured. GET: read-only, safe to repeat."""
-    loaded = conn.execute("SELECT COUNT(*) FROM weather_daily").fetchone()[0] > 0
+    """Liveness plus readiness: data loaded, API key configured, and the data window the scores use.
+
+    GET: read-only and safe to repeat. `data_window` is the effective window (what scores and answers use);
+    `target_end` is how far the configured window wants to reach. They differ until a refresh catches up.
+    """
+    try:
+        window = effective_window(conn)
+        loaded, data_window = True, {"start": window.start_iso, "end": window.end_iso, "full_years": window.years}
+    except DataNotLoadedError:
+        loaded, data_window = False, None
     return {"status": "ok", "data_loaded": loaded, "model": get_settings().anthropic_model,
-            "api_key_configured": bool(os.getenv("ANTHROPIC_API_KEY"))}
+            "api_key_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "data_window": data_window, "target_end": target_window().end_iso}
 
 
 @app.get("/api/hubs", response_model=list[HubScoreOut])
@@ -65,7 +75,7 @@ def list_hub_scores(
 ) -> list[HubScoreOut]:
     """Deterministic scores for all hubs, most exposed first. No LLM involved. GET: read-only."""
     try:
-        scores = list(scores_by_id(conn).values())  # already in composite-rank order
+        scores = list(scores_by_id(conn, effective_window(conn)).values())  # already in composite-rank order
     except DataNotLoadedError as exc:
         raise HTTPException(503, str(exc)) from exc
     if region:

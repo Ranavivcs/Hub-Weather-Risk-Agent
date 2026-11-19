@@ -65,7 +65,7 @@ Local check of the image: `docker build -t hub-weather-risk-agent .` then
 |---|---|
 | `POST /api/chat` | Send a message. Body `{"message": "...", "conversation_id": null}`; omit/null the id to start a conversation, pass the returned id back for follow-ups. Returns the structured answer, the code-computed scores of the hubs it names, and the tools used. |
 | `GET /api/hubs?hazard=&region=` | Deterministic scores for all hubs, most exposed first. No LLM. |
-| `GET /api/health` | Status, whether data is loaded, whether an API key is configured. |
+| `GET /api/health` | Status, whether data is loaded, whether an API key is configured, and the data window the scores use (`data_window`) next to the configured `target_end`. |
 | `POST /api/alerts/check?refresh=` | Score-change alert check (header `X-Alert-Token`). Returns 202 and runs in the background. Disabled until `ALERT_TOKEN` is set. |
 
 Example:

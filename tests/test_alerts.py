@@ -71,3 +71,11 @@ def test_webhook_failure_is_reported_not_raised(conn, monkeypatch):
     latest = alerts._latest_snapshots(conn)["dallas"]["composite"]
     assert latest == result.changes[0].current
     assert conn.execute("SELECT COUNT(*) FROM score_snapshots").fetchone()[0] == 2 * 15
+
+
+def test_snapshot_stores_the_effective_window(conn, monkeypatch):
+    import json as _json
+    monkeypatch.setenv("DATA_END", "latest")   # target reaches past the stored data (ends 2025-12-31)
+    alerts.check_score_changes(conn, threshold=1.0, webhook_url=None)
+    stored = _json.loads(conn.execute("SELECT breakdown_json FROM score_snapshots LIMIT 1").fetchone()[0])
+    assert stored["window"] == ["2021-01-01", "2025-12-31"]

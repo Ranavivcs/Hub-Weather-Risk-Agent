@@ -26,37 +26,39 @@ from app.db import connect
 from app.hubs import find_hub
 from app.metrics import load_nri
 from app.tools import run_tool
+from app.window import Window, effective_window
 
 CASES_FILE = Path(__file__).parent / "cases.json"
 RESULTS_DIR = Path(__file__).parent / "results"
 NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
-def _top(conn, hazard: str, region: str | None) -> list[str]:
+def _top(conn, window: Window, hazard: str, region: str | None) -> list[str]:
     """Hub ids ranked by hazard (or composite) within a region, from the scoring code."""
-    ranked = scoring.rank(risk.score_all(conn), None if hazard == "composite" else hazard)
+    ranked = scoring.rank(risk.score_all(conn, window), None if hazard == "composite" else hazard)
     return [s.hub_id for s in ranked if region is None or find_hub(s.hub_id).region == region]
 
 
-def _hub_score(conn, hub: str, hazard: str) -> float:
-    score = next(s for s in risk.score_all(conn) if s.hub_id == hub)
+def _hub_score(conn, window: Window, hub: str, hazard: str) -> float:
+    score = next(s for s in risk.score_all(conn, window) if s.hub_id == hub)
     return score.composite if hazard == "composite" else score.hazards[hazard].score
 
 
-def _expected_number(conn, spec: dict) -> float:
+def _expected_number(conn, window: Window, spec: dict) -> float:
     if "tool" in spec:
-        return run_tool(conn, spec["tool"], spec["args"])[spec["field"]]
+        return run_tool(conn, spec["tool"], spec["args"], window)[spec["field"]]
     if "hub_score" in spec:
-        return _hub_score(conn, spec["hub_score"]["hub"], spec["hub_score"]["hazard"])
+        return _hub_score(conn, window, spec["hub_score"]["hub"], spec["hub_score"]["hazard"])
     if "nri" in spec:  # a raw FEMA input the explanation should cite
         return load_nri(conn, find_hub(spec["nri"]["hub"]).county_fips)[spec["nri"]["field"]]
     top_spec = spec["hub_score_of_top"]
-    top_hub = _top(conn, top_spec["hazard"], top_spec["region"])[0]
-    return _hub_score(conn, top_hub, top_spec["score_hazard"])
+    top_hub = _top(conn, window, top_spec["hazard"], top_spec["region"])[0]
+    return _hub_score(conn, window, top_hub, top_spec["score_hazard"])
 
 
 def check(conn, checks: dict, result: agent.TurnResult, tools_used: list[str]) -> list[str]:
     """Return a list of failure messages (empty = pass)."""
+    window = effective_window(conn)  # the ground truth uses the same window as the agent did
     a = result.answer
     text = a.answer.lower()
     fails = []
@@ -78,11 +80,11 @@ def check(conn, checks: dict, result: agent.TurnResult, tools_used: list[str]) -
         if outside:
             fails.append(f"hubs outside {region}: {outside}")
     if spec := checks.get("first_hub_is_top_of"):
-        expected = _top(conn, spec["hazard"], spec["region"])[0]
+        expected = _top(conn, window, spec["hazard"], spec["region"])[0]
         if not a.hub_ids or a.hub_ids[0] != expected:
             fails.append(f"first hub should be {expected!r}, got {a.hub_ids[:1]}")
     if spec := checks.get("first_hubs_are_top_n_of"):
-        expected = _top(conn, spec["hazard"], spec["region"])[: spec["n"]]
+        expected = _top(conn, window, spec["hazard"], spec["region"])[: spec["n"]]
         if a.hub_ids[: spec["n"]] != expected:
             fails.append(f"first {spec['n']} hubs should be {expected}, got {a.hub_ids[: spec['n']]}")
     for group in checks.get("mentions_all_groups", []):
@@ -90,7 +92,7 @@ def check(conn, checks: dict, result: agent.TurnResult, tools_used: list[str]) -
             fails.append(f"answer mentions none of {group}")
     numbers = [float(n) for n in NUMBER_RE.findall(a.answer)]
     for spec in checks.get("numbers_in_answer", []):
-        expected = _expected_number(conn, spec)
+        expected = _expected_number(conn, window, spec)
         if not any(abs(n - expected) <= spec["tolerance"] for n in numbers):
             fails.append(f"expected number {expected} (±{spec['tolerance']}) not in answer")
     return fails

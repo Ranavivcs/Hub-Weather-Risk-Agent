@@ -105,3 +105,41 @@ def test_missing_or_long_bottom_line_gets_a_fix_attempt(conn):
     client = FakeClient([_final(too_long), _final(ANSWER)])
     agent.run_turn(conn, cid, "Q2", client=client)
     assert "longer than" in client.requests[1][-1]["content"][0]["text"]
+
+
+def test_turn_computes_the_window_once_and_shares_it(conn, monkeypatch):
+    """The prompt, every tool call and the attached scores use one window, computed once per turn."""
+    from app import window as window_mod
+    calls, seen = [], []
+    real_effective = window_mod.effective_window
+
+    def counting_effective(c, today=None):
+        calls.append(1)
+        return real_effective(c, today)
+
+    real_run_tool = agent.run_tool
+
+    def spying_run_tool(c, name, args, window):
+        seen.append(window)
+        return real_run_tool(c, name, args, window)
+
+    monkeypatch.setattr(agent, "effective_window", counting_effective)
+    monkeypatch.setattr(agent, "run_tool", spying_run_tool)
+    cid = conversations.create(conn)
+    client = FakeClient([
+        _tool_call("rank_hubs", {"hazard": "winter", "region": None, "top_n": 3}, "toolu_a"),
+        _tool_call("weather_stats", {"hub": "denver", "metric": "snow_day", "year": None, "threshold": None}, "toolu_b"),
+        _final(ANSWER),
+    ])
+    agent.run_turn(conn, cid, "Q", client=client)
+    assert len(calls) == 1
+    assert len(seen) == 2 and seen[0] is seen[1]
+
+
+def test_prompt_names_last_year_from_the_effective_window():
+    from datetime import date
+
+    from app.window import window_ending
+    prompt = agent.system_prompt(date(2026, 11, 19), window_ending(date(2026, 11, 12)))
+    assert '"Last year" means 2025' in prompt
+    assert "2021-11-13 to 2026-11-12" in prompt

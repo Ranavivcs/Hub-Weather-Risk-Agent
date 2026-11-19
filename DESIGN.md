@@ -99,7 +99,8 @@ app/
   sources/          thin clients for the two public APIs
   alerts.py         score-change alerts: snapshot, compare, webhook (python -m app.alerts)
   rate_limit.py     per-IP limit for /api/chat
-  config.py         settings from environment / .env, data window
+  window.py         the data window: target (what ingest fetches) vs effective (what scores use)
+  config.py         settings from environment / .env
 frontend/src/       React UI: App.tsx (chat), Sidebar.tsx (ranking / "How we rank" tabs),
                     AnswerCard.tsx (reasoning, score table, bottom line, caveats), RankingPanel.tsx
                     (GET /api/hubs), MethodPanel.tsx, useSpeechInput.ts (voice), RichText.tsx,
@@ -145,6 +146,19 @@ The first run only records a baseline.
 - **Why scores change.** With the default fixed window (2021–2025) they never change, so `DATA_END=latest` makes
   the 5-year window roll forward. The ingest is incremental: a daily refresh fetches only the new days, one small
   call per hub. A FEMA data update also changes scores.
+- **Two windows (`app/window.py`), both computed when called, never at import.** An earlier version computed
+  the window once at import; an external review found that this froze a long-running server's window, so a daily
+  refresh fetched nothing and no alert could fire.
+  - **Target window:** what `DATA_END` asks for. Only ingest uses it, to decide what to download.
+  - **Effective window:** what everything the user sees uses: scores, the "last year" in the agent's prompt,
+    `weather_stats` years and periods, and alert snapshots. It ends at the earlier of the target end and the last
+    day stored for every hub, and always spans 5 full years.
+  
+  So after a restart, when the database only holds the data baked into the image (through 2025), scores use the
+  full 2021–2025 window instead of a partly empty one. A refresh then moves the window forward.
+  - The effective window is computed once per chat turn, API request or alert check, and passed down. A refresh
+    that finishes mid-turn therefore can't give the prompt and the tools different windows.
+  - `GET /api/health` shows the window in use (`data_window`) next to the configured `target_end`.
 - **Triggers.**
   - `python -m app.alerts [--refresh]`.
   - `POST /api/alerts/check?refresh=true` with header `X-Alert-Token` (`ALERT_TOKEN`). It returns `202` and runs
@@ -156,9 +170,11 @@ The first run only records a baseline.
   to the inbox.
 - **Verified with real data.** A baseline on 2021–2025, then a rolled-forward window (+316 days of 2026 weather),
   flagged Houston −1.7 and Miami +1.2.
-- **Limit on Render's free plan.** Snapshots live in the container's SQLite file, so a restart resets the baseline.
-  The alert job runs inside the web service on purpose: a separate cron service couldn't see that file.
-  Persistent alert history would need Postgres.
+- **Limit on Render's free plan.** Snapshots live in the container's SQLite file, so a restart or redeploy wipes
+  them. **The first check after a restart only records a new baseline**, and alerts resume from the next check.
+  The data downloaded since the image was built is wiped too. Until the next refresh, scores fall back to the
+  image's full 2021–2025 window, not a partial one. The alert job runs inside the web service on purpose:
+  a separate cron service couldn't see that file. Persistent alert history would need Postgres.
 
 ## Voice input (bonus)
 

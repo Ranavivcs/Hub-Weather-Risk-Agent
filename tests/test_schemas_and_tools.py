@@ -50,10 +50,10 @@ def test_tool_schemas_are_strict_and_complete():
         assert set(s["required"]) == set(s["properties"]), tool["name"]
 
 
-def test_weather_stats_counts_days(conn):
+def test_weather_stats_counts_days(conn, window):
     # Synthetic data: Denver has 2 cm of snow on every 10th day counted from 2021-01-01. 2024 spans
     # day indexes 1095..1460 (leap year, 366 days); multiples of 10 in that range: 1100..1460 -> 37 days.
-    out = tools.run_tool(conn, "weather_stats", {"hub": "Denver", "metric": "snow_day", "year": 2024, "threshold": None})
+    out = tools.run_tool(conn, "weather_stats", {"hub": "Denver", "metric": "snow_day", "year": 2024, "threshold": None}, window)
     assert out["days_total"] == 366
     assert out["days_matching"] == 37
     assert out["percent"] == 10.1
@@ -70,13 +70,13 @@ def test_weather_stats_counts_days(conn):
         ("delete_everything", {}),
     ],
 )
-def test_bad_tool_inputs_raise_tool_error(conn, name, args):
+def test_bad_tool_inputs_raise_tool_error(conn, window, name, args):
     with pytest.raises(tools.ToolError):
-        tools.run_tool(conn, name, args)
+        tools.run_tool(conn, name, args, window)
 
 
-def test_rank_hubs_filters_region_and_keeps_global_rank(conn):
-    out = tools.run_tool(conn, "rank_hubs", {"hazard": "winter", "region": "West", "top_n": None})
+def test_rank_hubs_filters_region_and_keeps_global_rank(conn, window):
+    out = tools.run_tool(conn, "rank_hubs", {"hazard": "winter", "region": "West", "top_n": None}, window)
     assert {h["region"] for h in out["hubs"]} == {"West"}
     assert out["hubs"][0]["hub_id"] == "denver"            # the only hub with snow in the synthetic data
     assert out["hubs"][0]["rank_among_all_hubs"] == 1
