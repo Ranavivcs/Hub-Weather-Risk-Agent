@@ -150,6 +150,10 @@ The first run only records a baseline.
   - `POST /api/alerts/check?refresh=true` with header `X-Alert-Token` (`ALERT_TOKEN`). It returns `202` and runs
     in the background, so an external scheduler such as cron-job.org can call it daily without hitting its timeout.
   - The endpoint is disabled while `ALERT_TOKEN` is unset.
+- **Live setup.** The Render service runs with `DATA_END=latest`. A daily cron-job.org job calls
+  `POST /api/alerts/check?refresh=true` with the token, and alerts go to a webhook.site inbox. It was verified
+  end to end: a baseline on the image's data (through 2025), then a refresh with 2026 weather, sent the alert
+  to the inbox.
 - **Verified with real data.** A baseline on 2021–2025, then a rolled-forward window (+316 days of 2026 weather),
   flagged Houston −1.7 and Miami +1.2.
 - **Limit on Render's free plan.** Snapshots live in the container's SQLite file, so a restart resets the baseline.

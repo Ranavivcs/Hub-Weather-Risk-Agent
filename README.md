@@ -5,7 +5,12 @@ disruption. It ranks 15 hubs with a deterministic scoring model built on public 
 weather 2021–2025 and the FEMA National Risk Index), and uses Claude Haiku to pick the right analysis and
 explain it. The LLM never computes a score; code does.
 
+**Live demo:** https://hub-weather-risk-agent.onrender.com (chat; API docs at `/docs`).
 Design, architecture and assumptions: [DESIGN.md](DESIGN.md).
+
+The live service uses a rolling data window (`DATA_END=latest`), so its scores include the newest weather and
+differ slightly from the fixed 2021–2025 numbers in DESIGN.md and the eval, which uses the fixed window so its
+results can be reproduced. A daily scheduled job calls the alert check, and alerts go to a webhook.
 
 ## Run it locally
 
