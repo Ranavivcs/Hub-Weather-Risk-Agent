@@ -62,6 +62,9 @@ def check(conn, checks: dict, result: agent.TurnResult, tools_used: list[str]) -
     fails = []
     if "status_in" in checks and a.status not in checks["status_in"]:
         fails.append(f"status {a.status!r} not in {checks['status_in']}")
+    # Every answer needs a short bottom line (applies to all cases).
+    if not a.bottom_line.strip() or len(a.bottom_line.split()) > 40:
+        fails.append(f"bottom_line missing or longer than 40 words ({len(a.bottom_line.split())})")
     if "tools_any" in checks and not set(checks["tools_any"]) & set(tools_used):
         fails.append(f"none of {checks['tools_any']} called (called {tools_used})")
     for hub in checks.get("hubs_include", []):

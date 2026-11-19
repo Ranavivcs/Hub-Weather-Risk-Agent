@@ -2,22 +2,19 @@ import type { ChatResponse } from './api'
 import { HAZARD_ICONS, HAZARD_LABELS, HAZARDS, TOOL_LABELS } from './hazards'
 import { RichText } from './RichText'
 import { ScoreCell } from './ScoreCell'
-import { splitTakeaway } from './text'
 
 const STATUS_LABELS = { out_of_scope: 'Outside what I cover', needs_clarification: 'Need a bit more detail' } as const
 
-/** One agent reply: takeaway, reasoning, the formula-computed scores of the hubs it names, then caveats. */
+/** One agent reply: reasoning, the formula-computed scores of the hubs it names, the bottom line, then caveats. */
 export function AnswerCard({ reply }: { reply: ChatResponse }) {
   const { answer, hub_scores, tools_used } = reply
-  const [takeaway, rest] = splitTakeaway(answer.answer)
   const sources = [...new Set(tools_used)].map((t) => TOOL_LABELS[t] ?? t)
   const caveats = answer.assumptions.length + answer.uncertainty.length
 
   return (
     <article className="answer">
       {answer.status !== 'answered' && <span className="status">{STATUS_LABELS[answer.status]}</span>}
-      <p className="takeaway">{takeaway}</p>
-      {rest && <RichText text={rest} />}
+      <RichText text={answer.answer} />
 
       {hub_scores.length > 0 && (
         <section className="score-block" aria-label="Risk scores">
@@ -56,15 +53,12 @@ export function AnswerCard({ reply }: { reply: ChatResponse }) {
         </section>
       )}
 
+      <p className="bottom-line"><span className="bottom-line-label">Bottom line</span>{answer.bottom_line}</p>
+
       {(caveats > 0 || sources.length > 0) && (
         <footer className="answer-footer">
-          {caveats > 0 && (
-            <details className="notes">
-              <summary>Assumptions and data limits ({caveats})</summary>
-              {answer.assumptions.length > 0 && <NoteList title="Assumptions" items={answer.assumptions} />}
-              {answer.uncertainty.length > 0 && <NoteList title="Data limits" items={answer.uncertainty} />}
-            </details>
-          )}
+          <Notes title="Assumptions" items={answer.assumptions} />
+          <Notes title="Data limitations" items={answer.uncertainty} />
           {sources.length > 0 && <span className="sources">Based on: {sources.join(' · ')}</span>}
         </footer>
       )}
@@ -72,11 +66,13 @@ export function AnswerCard({ reply }: { reply: ChatResponse }) {
   )
 }
 
-function NoteList({ title, items }: { title: string; items: string[] }) {
+/** A collapsed list (assumptions or data limitations), shown only when it has items. */
+function Notes({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null
   return (
-    <div className="note-group">
-      <h4>{title}</h4>
+    <details className="notes">
+      <summary>{title} <span className="count">{items.length}</span></summary>
       <ul>{items.map((item, i) => <li key={i}>{item}</li>)}</ul>
-    </div>
+    </details>
   )
 }

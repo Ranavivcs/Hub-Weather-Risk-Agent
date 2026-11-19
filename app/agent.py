@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 8       # guard against a runaway tool loop
 MAX_FIX_ATTEMPTS = 1      # re-asks when the final answer fails validation
+MAX_BOTTOM_LINE_WORDS = 40  # schema asks for <= 30; a little slack before forcing a retry
 MAX_TOKENS = 16000
 EFFORT = "medium"
 
@@ -115,6 +116,10 @@ def _check_answer(raw: str) -> AgentAnswer:
     answer = AgentAnswer.model_validate_json(raw)
     if answer.status == "answered" and not answer.answer.strip():
         raise ValueError("status is 'answered' but the answer text is empty")
+    if not answer.bottom_line.strip():
+        raise ValueError("bottom_line is empty; give a one-sentence summary")
+    if len(answer.bottom_line.split()) > MAX_BOTTOM_LINE_WORDS:
+        raise ValueError(f"bottom_line is longer than {MAX_BOTTOM_LINE_WORDS} words; make it one short sentence")
     return answer
 
 

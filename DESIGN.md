@@ -75,7 +75,7 @@ Choices made with the user:
 ## Structured output (LLM ↔ code contract)
 
 `AgentAnswer` (`app/schemas.py`) has these fields: `status` (answered / out_of_scope / needs_clarification),
-`answer`, `hub_ids` (an enum of the 15 hub ids), `hazards` (an enum), `assumptions`, `uncertainty`.
+`answer`, `bottom_line` (one-sentence summary shown at the end of each answer), `hub_ids` (an enum of the 15 hub ids), `hazards` (an enum), `assumptions`, `uncertainty`.
 - The Messages API enforces the schema via `output_config.format`.
 - Pydantic re-validates it, plus business checks.
 - Tool inputs use `strict: true` schemas; our handlers still validate hub names, years and metrics, and return
@@ -101,8 +101,8 @@ app/
   rate_limit.py     per-IP limit for /api/chat
   config.py         settings from environment / .env, data window
 frontend/src/       React UI: App.tsx (chat), Sidebar.tsx (ranking / "How we rank" tabs),
-                    AnswerCard.tsx (takeaway, reasoning, score table, caveats), RankingPanel.tsx
-                    (GET /api/hubs), MethodPanel.tsx, useSpeechInput.ts (voice), RichText.tsx, text.ts,
+                    AnswerCard.tsx (reasoning, score table, bottom line, caveats), RankingPanel.tsx
+                    (GET /api/hubs), MethodPanel.tsx, useSpeechInput.ts (voice), RichText.tsx,
                     ScoreCell.tsx, hazards.ts, brand.ts, ErrorBoundary.tsx, api.ts
 tests/              pytest: scoring, schemas/tools, agent loop with a fake LLM, alerts, API, window/ingest
 evals/              cases.json + run.py (real LLM, ground truth from code)

@@ -5,6 +5,7 @@ export type Hazard = 'winter' | 'hurricane' | 'flood' | 'heat' | 'severe_storm'
 export interface AgentAnswer {
   status: 'answered' | 'out_of_scope' | 'needs_clarification'
   answer: string
+  bottom_line: string
   hub_ids: string[]
   hazards: Hazard[]
   assumptions: string[]

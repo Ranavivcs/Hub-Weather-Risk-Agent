@@ -9,7 +9,7 @@ from app import tools
 from app.schemas import AgentAnswer, answer_json_schema
 
 VALID = {"status": "answered", "answer": "Houston.", "hub_ids": ["houston"], "hazards": ["flood"],
-         "assumptions": [], "uncertainty": []}
+         "assumptions": [], "uncertainty": [], "bottom_line": "Houston is most exposed."}
 
 
 def test_valid_answer_parses():

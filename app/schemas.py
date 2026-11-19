@@ -24,6 +24,10 @@ class AgentAnswer(BaseModel):
         description="out_of_scope: the question is about a hub, hazard or period we have no data for."
     )
     answer: str = Field(description="The answer for the analyst, with the reasoning. Plain text; '- ' bullets allowed.")
+    bottom_line: str = Field(description=(
+        "One plain-language sentence (at most 30 words) that sums up the answer for someone skimming the "
+        "conversation later. It must agree with the answer; name the hub(s) and the key number if there is one."
+    ))
     hub_ids: list[HubId] = Field(description="Hubs the answer is about, most exposed first. Empty if none.")
     hazards: list[Hazard] = Field(description="Hazards the answer is about. Empty if the composite score.")
     assumptions: list[str] = Field(description="Assumptions this answer relies on.")

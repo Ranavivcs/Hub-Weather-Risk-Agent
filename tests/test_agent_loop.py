@@ -32,7 +32,8 @@ class FakeClient:
 
 
 ANSWER = {"status": "answered", "answer": "Denver had snow on some days.", "hub_ids": ["denver"],
-          "hazards": ["winter"], "assumptions": [], "uncertainty": []}
+          "hazards": ["winter"], "assumptions": [], "uncertainty": [],
+          "bottom_line": "Denver sees snow on some days."}
 
 
 def test_tool_round_trip_then_answer(conn):
@@ -94,3 +95,13 @@ def test_follow_up_sends_previous_turn_as_history(conn):
     assert [m["role"] for m in sent] == ["user", "assistant", "user"]
     assert sent[0]["content"][0]["text"] == "First question"
     assert len(conversations.load_messages(conn, cid)) == 4
+
+
+def test_missing_or_long_bottom_line_gets_a_fix_attempt(conn):
+    cid = conversations.create(conn)
+    too_long = {**ANSWER, "bottom_line": "word " * 60}
+    client = FakeClient([_final({**ANSWER, "bottom_line": " "}), _final(ANSWER)])
+    assert agent.run_turn(conn, cid, "Q", client=client).answer.bottom_line == ANSWER["bottom_line"]
+    client = FakeClient([_final(too_long), _final(ANSWER)])
+    agent.run_turn(conn, cid, "Q2", client=client)
+    assert "longer than" in client.requests[1][-1]["content"][0]["text"]
