@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/*.db
+data/*.db-*
+frontend/node_modules/
+frontend/dist/
+.pytest_cache/
+evals/results/
+.claude/

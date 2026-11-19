@@ -1,0 +1,12 @@
+# Render Blueprint: one Docker web service. The API key is entered in the Render dashboard, never here.
+services:
+  - type: web
+    name: hub-weather-risk-agent
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-haiku-5-5

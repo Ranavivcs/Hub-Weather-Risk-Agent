@@ -1,0 +1,117 @@
+[
+  {
+    "id": "midwest_winter",
+    "turns": ["Which hubs in the Midwest are most exposed to winter disruption?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["rank_hubs"],
+      "first_hub_is_top_of": {"hazard": "winter", "region": "Midwest"},
+      "hubs_all_in_region": "Midwest"
+    }
+  },
+  {
+    "id": "miami_vs_houston",
+    "turns": ["Compare Miami and Houston in terms of hurricane and flood exposure."],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["compare_hubs", "hub_breakdown"],
+      "hubs_include": ["miami", "houston"],
+      "hazards_include": ["hurricane", "flood"],
+      "numbers_in_answer": [
+        {"hub_score": {"hub": "miami", "hazard": "hurricane"}, "tolerance": 0.5},
+        {"hub_score": {"hub": "houston", "hazard": "flood"}, "tolerance": 0.5}
+      ]
+    }
+  },
+  {
+    "id": "denver_snow_last_year",
+    "turns": ["What percentage of days in Denver last year had snowfall?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["weather_stats"],
+      "hubs_include": ["denver"],
+      "numbers_in_answer": [
+        {"tool": "weather_stats", "args": {"hub": "denver", "metric": "snowfall_day", "year": 2025, "threshold": null},
+         "field": "percent", "tolerance": 0.3}
+      ]
+    }
+  },
+  {
+    "id": "dallas_why",
+    "turns": ["Why is the Dallas hub's weather disruption risk high?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["hub_breakdown"],
+      "hubs_include": ["dallas"],
+      "mentions_all_groups": [["heat"], ["hail", "tornado", "severe storm", "severe-storm", "severe_storm"]],
+      "numbers_in_answer": [{"hub_score": {"hub": "dallas", "hazard": "composite"}, "tolerance": 0.5}]
+    }
+  },
+  {
+    "id": "top3_overall",
+    "turns": ["Which three hubs should we prioritize for resilience investment overall?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["rank_hubs"],
+      "first_hubs_are_top_n_of": {"hazard": "composite", "region": null, "n": 3}
+    }
+  },
+  {
+    "id": "most_heat",
+    "turns": ["Which hub has the most extreme heat exposure?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["rank_hubs"],
+      "first_hub_is_top_of": {"hazard": "heat", "region": null}
+    }
+  },
+  {
+    "id": "phoenix_hot_days_2024",
+    "turns": ["How many days did Phoenix reach 35 °C or more in 2024?"],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["weather_stats"],
+      "numbers_in_answer": [
+        {"tool": "weather_stats", "args": {"hub": "phoenix", "metric": "extreme_heat_day", "year": 2024, "threshold": null},
+         "field": "days_matching", "tolerance": 0}
+      ]
+    }
+  },
+  {
+    "id": "unknown_hub",
+    "turns": ["How exposed is our Boston hub to snow?"],
+    "checks": {"status_in": ["out_of_scope", "needs_clarification"]}
+  },
+  {
+    "id": "unmodeled_hazard",
+    "turns": ["Which of our hubs are most exposed to earthquakes?"],
+    "checks": {"status_in": ["out_of_scope"]}
+  },
+  {
+    "id": "year_out_of_range",
+    "turns": ["What percentage of days in Chicago had snow in 2015?"],
+    "checks": {"status_in": ["out_of_scope", "needs_clarification"]}
+  },
+  {
+    "id": "follow_up_pronoun",
+    "turns": [
+      "Which Midwest hub is most exposed to winter disruption?",
+      "How does that hub score on severe storms?"
+    ],
+    "checks": {
+      "status_in": ["answered"],
+      "first_hub_is_top_of": {"hazard": "winter", "region": "Midwest"},
+      "numbers_in_answer": [{"hub_score_of_top": {"hazard": "winter", "region": "Midwest", "score_hazard": "severe_storm"},
+                             "tolerance": 0.5}]
+    }
+  },
+  {
+    "id": "follow_up_compare",
+    "turns": ["Why is the Dallas hub's weather disruption risk high?", "Compare it with Houston."],
+    "checks": {
+      "status_in": ["answered"],
+      "tools_any": ["compare_hubs", "hub_breakdown"],
+      "hubs_include": ["dallas", "houston"]
+    }
+  }
+]
